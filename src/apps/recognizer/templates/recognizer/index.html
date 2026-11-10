@@ -1,0 +1,180 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrawingIA Studio — Real-Time Neural Sketch Recognition & XAI</title>
+    <link rel="stylesheet" href="{% static 'recognizer/css/styles.css' %}">
+</head>
+<body>
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-logo">✦</div>
+            <div>
+                <h1>DrawingIA <span class="badge-accent">Studio 2.0</span></h1>
+                <p class="subtitle">PyTorch Residual CNN + PyForgeAI Hybrid Ensemble • Explainable AI</p>
+            </div>
+        </div>
+
+        <div class="telemetry-bar">
+            <div class="stat-pill">
+                <span class="stat-label">Val Accuracy</span>
+                <span class="stat-value" id="stat-accuracy">{{ initial_stats.training_report.validation_accuracy }}%</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-label">Latency</span>
+                <span class="stat-value" id="stat-latency">0.0 ms</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-label">Predictions</span>
+                <span class="stat-value" id="stat-predictions">{{ initial_stats.total_predictions }}</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-label">Taught Samples</span>
+                <span class="stat-value" id="stat-taught">{{ initial_stats.total_taught_samples }}</span>
+            </div>
+            <button id="btn-retrain" class="btn btn-outline" title="Re-train hybrid ensemble on procedural + user strokes">
+                ↻ Calibrate AI
+            </button>
+        </div>
+    </header>
+
+    <main class="workspace-grid">
+        <!-- LEFT PANEL: Interactive Drawing Canvas & Challenge Mode -->
+        <section class="panel canvas-panel">
+            <div class="panel-header">
+                <div class="mode-tabs">
+                    <button id="tab-studio" class="tab-btn active">🎨 Free Studio</button>
+                    <button id="tab-challenge" class="tab-btn">⚡ QuickDraw Challenge</button>
+                </div>
+                <div class="auto-predict-toggle">
+                    <label class="switch-label">
+                        <input type="checkbox" id="chk-autopredict" checked>
+                        <span>Live Inference</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Challenge Banner (hidden in Free Studio mode) -->
+            <div id="challenge-banner" class="challenge-banner hidden">
+                <div class="challenge-target">
+                    <span class="challenge-label">DRAW:</span>
+                    <strong id="challenge-prompt">★ Star</strong>
+                </div>
+                <div class="challenge-metrics">
+                    <span class="timer-pill">⏱ <b id="challenge-timer">10.0s</b></span>
+                    <span class="score-pill">🏆 Score: <b id="challenge-score">0</b></span>
+                    <button id="btn-skip-challenge" class="btn btn-xs">Next Prompt →</button>
+                </div>
+            </div>
+
+            <div class="canvas-wrapper">
+                <canvas id="drawing-canvas" width="420" height="420"></canvas>
+                <div id="canvas-hint" class="canvas-hint">
+                    Draw any digit (0–9) or symbol (★ ♥ ☺ ⚡ △)
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <div class="brush-control">
+                    <label for="brush-size">Brush: <span id="brush-size-val">18</span>px</label>
+                    <input type="range" id="brush-size" min="8" max="32" value="18">
+                </div>
+                <div class="toolbar-actions">
+                    <button id="btn-undo" class="btn btn-secondary" title="Undo last stroke">↶ Undo</button>
+                    <button id="btn-clear" class="btn btn-secondary" title="Clear canvas">✕ Clear</button>
+                    <button id="btn-sample" class="btn btn-secondary" title="Auto-draw a synthetic sample">✨ Auto-Demo</button>
+                    <button id="btn-predict" class="btn btn-primary">⚡ Predict</button>
+                </div>
+            </div>
+
+            <!-- Online Active Learning: Teach the AI -->
+            <div class="teach-section">
+                <div class="teach-header">
+                    <h3>🧠 Online Active Learning — Teach the AI</h3>
+                    <span id="teach-feedback" class="teach-feedback">Click the correct label below to fine-tune weights on your drawing</span>
+                </div>
+                <div class="class-pills" id="teach-class-grid">
+                    {% for item in drawing_classes %}
+                    <button class="class-pill" data-class-id="{{ item.id }}" title="Teach AI that current drawing is {{ item.label }}">
+                        <span class="pill-icon">{{ item.icon }}</span>
+                        <span class="pill-name">{{ item.label }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT PANEL: Neural Predictions, Probabilities & XAI Inspector -->
+        <section class="panel intelligence-panel">
+            <div class="panel-header">
+                <h2>Neural Telemetry & Explainable AI</h2>
+                <div class="engine-selector">
+                    <label for="select-engine">Engine:</label>
+                    <select id="select-engine">
+                        <option value="ensemble" selected>Hybrid Ensemble (CNN + PyForgeAI)</option>
+                        <option value="cnn">PyTorch Residual CNN (Spatial)</option>
+                        <option value="pyforgeai">PyForgeAI MLP (Dense)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Hero Prediction Card -->
+            <div class="hero-prediction">
+                <div class="hero-icon" id="pred-icon">✏</div>
+                <div class="hero-details">
+                    <div class="hero-label-row">
+                        <h3 id="pred-label">Draw on Canvas</h3>
+                        <span class="confidence-badge" id="pred-confidence">0.0%</span>
+                    </div>
+                    <p class="hero-meta">
+                        Engine: <strong id="pred-engine">Hybrid Ensemble</strong> •
+                        Uncertainty (Entropy): <strong id="pred-entropy">0.00</strong>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Top-5 Probability Distribution -->
+            <div class="probabilities-card">
+                <h4>Top-5 Class Probabilities</h4>
+                <div id="prob-bars" class="prob-bars">
+                    <div class="empty-state">Draw a stroke or click "✨ Auto-Demo" to inspect class probabilities.</div>
+                </div>
+            </div>
+
+            <!-- Explainable AI (XAI) Dual 28x28 Inspector -->
+            <div class="xai-card">
+                <div class="xai-header">
+                    <h4>🔬 Explainable AI (XAI) Spatial Inspector (28×28)</h4>
+                    <span class="xai-badge">Real-Time Feature Attribution</span>
+                </div>
+                <div class="xai-grid">
+                    <div class="xai-box">
+                        <canvas id="canvas-normalized" width="140" height="140"></canvas>
+                        <div class="xai-caption">
+                            <strong>Center-of-Mass Tensor</strong>
+                            <span>Bounding-box cropped & centroid-aligned input</span>
+                        </div>
+                    </div>
+                    <div class="xai-box">
+                        <canvas id="canvas-heatmap" width="140" height="140"></canvas>
+                        <div class="xai-caption">
+                            <strong>CNN Activation Saliency</strong>
+                            <span>Spatial regions driving the neural decision</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        window.DRAWING_CLASSES = {{ drawing_classes_json|safe }};
+    </script>
+    <script src="{% static 'recognizer/js/app.js' %}"></script>
+</body>
+</html>
